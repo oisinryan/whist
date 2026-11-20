@@ -1,0 +1,1310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Whist - Audio Cleaner</title>
+<meta name="description" content="Clean up audio in your browser. Reduce sub-bass and hum, compare the original and processed sound, and export a WAV.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='9' fill='%23122239'/%3E%3Cpath d='M7 20h4l3-9 5 17 4-15 4 12 3-5h3' fill='none' stroke='%2368e1cd' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+:root {
+  --paper: #edf1f5; --surface: #fff; --ink: #182438; --muted: #526176;
+  --line: #dce4ec; --navy: #122239; --graph: #101d30; --axis: #a9b9cd;
+  --blue: #3547a1; --teal: #68e1cd; --orange: #ffb480; --alert: #913c26;
+  font: 16px/1.45 "Avenir Next", "Segoe UI", sans-serif;
+  color: var(--ink); background: var(--paper);
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, select, input { font: inherit; }
+button, select, input[type=checkbox], input[type=range] { cursor: pointer; }
+button, select, input[type=number] { min-height: 38px; }
+button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+  outline: 3px solid #7489ed; outline-offset: 3px;
+}
+button:disabled, input:disabled { cursor: default; opacity: .57; }
+button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 7px 13px; border: 1px solid #c9d4e0; background: var(--surface); border-radius: 6px; color: var(--ink); font-size: .875rem; font-weight: 650; white-space: nowrap; }
+button:not(:disabled):hover { border-color: #7c89b2; background: #f3f5ff; }
+button.primary { background: var(--blue); color: white; border-color: var(--blue); }
+button.primary:not(:disabled):hover { background: #293a8f; }
+svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+h1, h2, h3, p { margin: 0; }
+.top { background: var(--navy); color: white; }
+.top-inner, main { max-width: 1500px; margin: auto; padding-inline: clamp(16px, 3.1vw, 46px); }
+.top-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 17px; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand-icon { display: grid; place-items: center; width: 37px; height: 37px; border: 1px solid #456279; border-radius: 8px; color: var(--teal); }
+.brand-icon svg { width: 23px; height: 23px; }
+h1 { font-size: clamp(1.12rem, 2vw, 1.42rem); line-height: 1.2; letter-spacing: -.035em; font-weight: 700; }
+.local { color: #bdcadb; font-size: .8rem; margin-top: 3px; }
+.top button { background: #21354f; color: white; border-color: #485f7b; }
+.top button:not(:disabled):hover { background: #304764; }
+main { padding-block: 22px 30px; }
+.source {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  margin-bottom: 15px; min-height: 70px; padding: 10px 16px;
+  border: 1px dashed #aab9cc; border-radius: 8px; background: #f7f9fc;
+}
+.source.ready { border-style: solid; border-color: var(--line); background: var(--surface); }
+.source.drag { border-color: var(--blue); background: #e1e7ff; }
+.source-text { min-width: 0; }
+.source h2 { font-size: 1.04rem; line-height: 1.35; overflow-wrap: anywhere; }
+.source p, .subtext { font-size: .8rem; color: var(--muted); margin-top: 3px; }
+.source-actions { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 344px); gap: 15px; align-items: start; }
+.workspace { min-width: 0; }
+.panel { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow: hidden; }
+.panel + .panel { margin-top: 15px; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; padding: 8px 13px; }
+.head h2, .settings h2 { font-size: .97rem; letter-spacing: -.02em; }
+.mode, .channel-select { display: flex; align-items: center; gap: 3px; }
+.mode { background: #edf1f5; border-radius: 5px; padding: 2px; }
+.mode button { min-height: 30px; padding: 4px 9px; border: 0; background: transparent; font-size: .8rem; }
+.mode button[aria-pressed=true] { background: var(--navy); color: white; }
+.graph { position: relative; background: var(--graph); color: #e4edf6; }
+canvas { display: block; width: 100%; }
+#wave { height: 180px; cursor: crosshair; touch-action: pan-y; }
+#spectrum { height: 227px; }
+.empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; pointer-events: none; color: #e8f0fa; font-size: .95rem; text-align: center; padding: 20px; }
+.empty small { font-size: .81rem; color: #b6c6da; }
+.empty[hidden], [hidden] { display: none !important; }
+.transport { display: grid; grid-template-columns: auto auto minmax(55px, 1fr) auto; gap: 10px; align-items: center; padding: 9px 12px; }
+.transport button { padding-inline: 8px; min-width: 34px; min-height: 34px; }
+.transport .duration { font: .79rem ui-monospace, monospace; color: var(--muted); white-space: nowrap; }
+.seek-control { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.seek-control input { min-width: 44px; width: 100%; }
+.monitor { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: .76rem; }
+.monitor select { min-height: 32px; padding: 3px; }
+input[type=range] { accent-color: var(--blue); }
+select, input[type=number] { padding: 5px 7px; border: 1px solid #c9d4e0; border-radius: 5px; background: white; color: var(--ink); font-size: .83rem; }
+.channel-select select { min-height: 32px; }
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 13px; color: var(--muted); font-size: .78rem; border-bottom: 1px solid var(--line); }
+.swatch { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 5px; border-radius: 2px; }
+.swatch.original { background: #c17a4c; }
+.swatch.processed { background: #167f73; }
+.swatch.mark { background: #8255a5; }
+.analysis { padding: 0 13px 10px; }
+.analysis table { border-collapse: collapse; width: 100%; font-size: .82rem; }
+.analysis th, .analysis td { padding: 6px 5px; border-bottom: 1px solid #e9eef4; }
+.analysis th { text-align: left; font-weight: 600; }
+.analysis thead th { color: var(--muted); }
+.analysis td, .analysis thead th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.analysis tr:last-child > * { border-bottom: none; }
+.analysis .flag { color: var(--alert); font-weight: 700; }
+.cues { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0 1px; }
+.cues button { min-height: 30px; padding: 3px 8px; font-size: .75rem; font-variant-numeric: tabular-nums; }
+.settings .head { padding-inline: 14px; border-bottom: 1px solid var(--line); }
+.controls { margin: 0; padding: 0; border: 0; min-width: 0; }
+.controls[disabled] .group { opacity: .58; }
+.group { padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.group h3, .group label { font-size: .85rem; font-weight: 650; }
+.group .subtext { font-size: .75rem; line-height: 1.4; }
+.group .row, .preset-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.preset-row select { width: 100%; }
+.check { display: inline-flex; align-items: center; gap: 7px; }
+.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--blue); }
+.knobs { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; margin-top: 7px; }
+.knobs label { display: flex; flex: 1; align-items: center; gap: 5px; color: var(--muted); font-size: .75rem; font-weight: 500; white-space: nowrap; }
+.knobs input[type=number] { width: 65px; min-height: 33px; }
+.knobs select { min-height: 33px; flex: 1; }
+.export { padding: 12px 14px; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.export .subtext { margin-top: 6px; }
+.status { min-height: 1.45em; margin-top: 8px; font-size: .78rem; color: var(--muted); }
+.status[data-kind=error] { color: var(--alert); }
+.small-state { color: var(--muted); font-size: .73rem; font-weight: 600; }
+.small-state[data-state=ready] { color: #126558; }
+.keys { color: var(--muted); font-size: .76rem; margin-top: 12px; }
+@media (max-width: 980px) { .layout { grid-template-columns: minmax(0, 1fr) 300px; } }
+@media (max-width: 765px) {
+  main { padding-top: 14px; }
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .transport { gap: 7px; }
+  .settings { grid-row: 2; }
+}
+@media (max-width: 390px) {
+  .source { padding-inline: 10px; gap: 8px; }
+  .source-actions button { padding-inline: 7px; }
+  .transport { grid-template-columns: auto auto 1fr; }
+  .monitor { grid-column: 3; justify-self: end; }
+  .head { flex-wrap: wrap; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <div class="brand">
+      <span class="brand-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 12h3l2-6 4 12 3-14 3 12 2-4h3"/></svg></span>
+      <div><h1>Whist</h1><p class="local">Audio Cleaner</p></div>
+    </div>
+    <button id="open" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 19V5h7l2 3h9v11z"/></svg>Open audio</button>
+    <input id="file" type="file" hidden accept="audio/*,.wav,.wave,.bwf,.aif,.aiff,.flac,.mp3,.m4a,.ogg,.opus,.aac">
+  </div>
+</header>
+<main>
+  <section id="drop" class="source" aria-label="Audio source">
+    <div class="source-text"><h2 id="filename">Drop an audio file here</h2><p id="fileinfo">Open your recording to scan the waveform and frequency spectrum.</p></div>
+    <div class="source-actions"><button id="choose" type="button">Choose file</button></div>
+  </section>
+  <div class="layout">
+    <div class="workspace">
+      <section class="panel" aria-labelledby="wave-title">
+        <div class="head">
+          <h2 id="wave-title">Waveform</h2>
+          <div class="mode" role="group" aria-label="Audition version">
+            <button id="original" type="button" disabled aria-pressed="true">Original</button>
+            <button id="processed" type="button" disabled aria-pressed="false">Processed</button>
+          </div>
+        </div>
+        <div class="graph">
+          <canvas id="wave" aria-label="Waveform with full-scale sample markers. Use the playback position slider to seek." role="img"></canvas>
+          <div id="wave-empty" class="empty">Open a recording<small>WAV, plus formats your browser can decode</small></div>
+        </div>
+        <div class="transport">
+          <button id="play" type="button" disabled aria-label="Play"><svg aria-hidden="true" viewBox="0 0 24 24"><path id="play-glyph" d="M8 5l12 7-12 7z"/></svg></button>
+          <button id="stop" type="button" disabled aria-label="Stop"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></button>
+          <div class="seek-control"><input id="seek" type="range" min="0" max="1" step=".001" value="0" disabled aria-label="Playback position"><span id="clock" class="duration">0:00.000</span></div>
+          <label class="monitor" for="monitor">Monitor <select id="monitor" aria-label="Monitor gain"><option value="-24">−24 dB</option><option value="-18">−18 dB</option><option value="-12" selected>−12 dB</option><option value="-6">−6 dB</option><option value="0">0 dB</option></select></label>
+        </div>
+      </section>
+      <section class="panel" aria-labelledby="spectrum-title">
+        <div class="head">
+          <h2 id="spectrum-title">Frequency spectrum</h2>
+          <label class="channel-select"><select id="channel" aria-label="Spectrum channels" disabled><option value="mix">Channel average</option></select></label>
+        </div>
+        <div class="graph">
+          <canvas id="spectrum" aria-label="Original and processed average spectrum on a logarithmic frequency scale. Shaded region 20 to 50 Hz." role="img"></canvas>
+          <div id="spectrum-empty" class="empty">Spectrum appears after analysis</div>
+        </div>
+        <div class="legend"><span><i class="swatch original"></i>Original</span><span id="processed-key" hidden><i class="swatch processed"></i>Processed</span><span><i class="swatch mark"></i>20–50 Hz</span></div>
+        <div class="analysis">
+          <table aria-label="Signal measurements">
+            <thead><tr><th scope="col">Measurement</th><th scope="col">Original</th><th scope="col">Processed</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">True peak (estimated)</th><td id="peak-before">—</td><td id="peak-after">—</td></tr>
+              <tr><th scope="row">Full-scale samples</th><td id="clip-before">—</td><td id="clip-after">—</td></tr>
+              <tr><th scope="row">20–50 Hz RMS</th><td id="bass-before">—</td><td id="bass-after">—</td></tr>
+            </tbody>
+          </table>
+          <div id="cues" class="cues" aria-label="Jump to flagged timestamps" hidden></div>
+        </div>
+      </section>
+    </div>
+    <aside class="panel settings" aria-labelledby="cleanup-title">
+      <div class="head"><h2 id="cleanup-title">Cleanup</h2><span id="render-state" class="small-state" aria-live="polite"></span></div>
+      <fieldset id="controls" class="controls" disabled aria-label="Cleanup settings">
+        <div class="group">
+          <label class="preset-row" for="preset">Preset<select id="preset">
+            <option value="custom" hidden>Custom</option>
+            <option value="neutral" selected>Neutral</option>
+            <option value="pa">PA sub cleanup</option>
+            <option value="hum50">50 Hz hum</option>
+            <option value="hum60">60 Hz hum</option>
+            <option value="peaks">Short clipped peaks</option>
+          </select></label>
+          <p class="subtext" id="preset-help">Start from a preset or adjust the filters below.</p>
+        </div>
+        <div class="group">
+          <div class="row"><label class="check"><input id="high" type="checkbox">High-pass</label></div>
+          <div class="knobs"><label for="highHz">Cutoff <input id="highHz" type="number" min="10" max="250" step="1" value="40"> Hz</label><select id="slope" aria-label="High-pass slope"><option value="12">12 dB/oct</option><option value="24" selected>24 dB/oct</option></select></div>
+        </div>
+        <div class="group">
+          <div class="row"><label class="check"><input id="shelf" type="checkbox">Low shelf</label></div>
+          <div class="knobs"><label for="shelfHz">Below <input id="shelfHz" type="number" min="20" max="500" step="1" value="60"> Hz</label><label for="shelfDb">Gain <input id="shelfDb" type="number" min="-24" max="0" step=".5" value="-6"> dB</label></div>
+        </div>
+        <div class="group">
+          <div class="row"><label class="check"><input id="notch" type="checkbox">Notch / hum</label><label class="check"><input id="harmonics" type="checkbox">Harmonics</label></div>
+          <div class="knobs"><label for="notchHz">Centre <input id="notchHz" type="number" min="20" max="6000" step=".1" value="60"> Hz</label><label for="notchQ">Q <input id="notchQ" type="number" min="2" max="70" step="1" value="30"></label></div>
+        </div>
+        <div class="group">
+          <label class="check"><input id="repair" type="checkbox">Repair short clipped peaks</label>
+          <p class="subtext">Estimates single samples and flat tops up to 8 samples.</p>
+        </div>
+        <div class="group">
+          <div class="row"><h3>Output level</h3><label class="check"><input id="guard" type="checkbox">Peak guard</label></div>
+          <div class="knobs"><label for="gain">Trim <input id="gain" type="number" min="-36" max="12" step=".5" value="0"> dB</label><label for="ceiling">Ceiling <input id="ceiling" type="number" min="-12" max="-.1" step=".1" value="-1"> dBTP</label></div>
+        </div>
+      </fieldset>
+      <div class="export">
+        <div class="actions"><button id="render" class="primary" type="button" disabled>Render preview</button><button id="download" type="button" disabled>Export WAV</button></div>
+        <p class="subtext">24-bit PCM at the working sample rate</p>
+        <div id="status" class="status" role="status" aria-live="polite">Audio stays on this device.</div>
+      </div>
+    </aside>
+  </div>
+  <p class="keys">Space plays or pauses. Click the waveform or a timestamp to seek. Monitor gain affects playback only.</p>
+</main>
+<script id="audio-engine" type="text/plain">
+'use strict';
+
+const DB_FLOOR = 1e-15;
+const WAVE_COLUMNS = 1200;
+const db = (amplitude) => 20 * Math.log10(Math.max(Math.abs(amplitude), DB_FLOOR));
+const gain = (decibels) => 10 ** (decibels / 20);
+let source;
+
+function fourCC(view, offset) {
+  return String.fromCharCode(view.getUint8(offset), view.getUint8(offset + 1),
+    view.getUint8(offset + 2), view.getUint8(offset + 3));
+}
+
+function readWav(buffer) {
+  const view = new DataView(buffer);
+  if (view.byteLength < 12 || fourCC(view, 0) !== 'RIFF' || fourCC(view, 8) !== 'WAVE') return null;
+  let fmt;
+  let data;
+  let bext;
+  for (let pos = 12; pos + 8 <= view.byteLength;) {
+    const key = fourCC(view, pos);
+    const size = view.getUint32(pos + 4, true);
+    const start = pos + 8;
+    if (start + size > view.byteLength) throw new Error('This WAV contains a truncated chunk.');
+    if (key === 'fmt ' && size >= 16) fmt = { start, size };
+    if (key === 'data' && !data) data = { start, size };
+    if (key === 'bext' && size >= 348) bext = buffer.slice(start, start + size);
+    pos = start + size + (size & 1);
+  }
+  if (!fmt || !data) throw new Error('This WAV is missing its format or audio data.');
+  const { start } = fmt;
+  let codec = view.getUint16(start, true);
+  const count = view.getUint16(start + 2, true);
+  const rate = view.getUint32(start + 4, true);
+  const align = view.getUint16(start + 12, true);
+  const bits = view.getUint16(start + 14, true);
+  let validBits = bits;
+  let mask = 0;
+  if (codec === 0xfffe && fmt.size >= 40) {
+    validBits = view.getUint16(start + 18, true) || bits;
+    mask = view.getUint32(start + 20, true);
+    codec = view.getUint32(start + 24, true);
+  }
+  if (!((codec === 1 && [8, 16, 24, 32].includes(bits)) ||
+        (codec === 3 && [32, 64].includes(bits)))) return null;
+  const bytes = bits / 8;
+  if (count < 1 || count > 32 || rate < 3000 || rate > 384000 ||
+      align !== count * bytes || validBits > bits || validBits < 1) {
+    throw new Error('This WAV has an unsupported channel layout or sample format.');
+  }
+  const frames = Math.floor(data.size / align);
+  if (!frames) throw new Error('The file has no audio samples.');
+  let sample;
+  if (codec === 3 && bits === 64) sample = (i) => view.getFloat64(i, true);
+  else if (codec === 3) sample = (i) => view.getFloat32(i, true);
+  else if (bits === 32) sample = (i) => view.getInt32(i, true) / 2147483648;
+  else if (bits === 24) sample = (i) => ((view.getInt8(i + 2) << 16) |
+    (view.getUint8(i + 1) << 8) | view.getUint8(i)) / 8388608;
+  else if (bits === 16) sample = (i) => view.getInt16(i, true) / 32768;
+  else sample = (i) => (view.getUint8(i) - 128) / 128;
+  const channels = Array.from({ length: count }, (_, ch) => {
+    const out = new Float32Array(frames);
+    for (let i = 0, pos = data.start + ch * bytes; i < frames; i++, pos += align) {
+      const v = sample(pos);
+      out[i] = Number.isFinite(v) ? v : 0;
+    }
+    return out;
+  });
+  return { channels, rate, resolution: codec === 1 ? validBits : null, bits, floating: codec === 3, bext, mask };
+}
+
+function makePeakKernel() {
+  return [0.25, 0.5, 0.75].map((phase) => {
+    const coefficients = [];
+    for (let tap = -15; tap <= 16; tap++) {
+      const x = tap - phase;
+      const sinc = Math.sin(Math.PI * x) / (Math.PI * x);
+      const window = .42 + .5 * Math.cos(Math.PI * x / 16) + .08 * Math.cos(2 * Math.PI * x / 16);
+      coefficients.push(sinc * window);
+    }
+    const sum = coefficients.reduce((a, b) => a + b, 0);
+    return coefficients.map((v) => v / sum);
+  });
+}
+
+const kernel = makePeakKernel();
+const kernelNorm = Math.max(...kernel.map((phase) => phase.reduce((a, b) => a + Math.abs(b), 0)));
+const localNorm = Math.max(...kernel.map((phase) => phase.slice(14, 18).reduce((a, b) => a + Math.abs(b), 0)));
+const outerNorm = Math.max(...kernel.map((phase) => phase.reduce((a, b, i) =>
+  a + (i >= 14 && i < 18 ? 0 : Math.abs(b)), 0)));
+
+function measurePeaks(channels, rail) {
+  const frames = channels[0].length;
+  const blockSize = 128;
+  const samplePeak = { value: 0, index: 0, channel: 0 };
+  const truePeak = { ...samplePeak };
+  const rails = [];
+  const markers = [];
+  const waveform = [];
+  const clippedRuns = [];
+
+  for (let ch = 0; ch < channels.length; ch++) {
+    const samples = channels[ch];
+    const blocks = new Float32Array(Math.ceil(frames / blockSize));
+    const columns = Math.min(frames, WAVE_COLUMNS);
+    const lo = new Float32Array(columns);
+    const hi = new Float32Array(columns);
+    lo.fill(Infinity);
+    hi.fill(-Infinity);
+    const mark = new Uint8Array(columns);
+    let total = 0;
+    let runStart = -1;
+    const runs = [];
+
+    for (let i = 0; i < frames; i++) {
+      const value = samples[i];
+      const absolute = Math.abs(value);
+      const column = Math.floor(i * columns / frames);
+      if (value < lo[column]) lo[column] = value;
+      if (value > hi[column]) hi[column] = value;
+      const block = i >> 7;
+      if (absolute > blocks[block]) blocks[block] = absolute;
+      if (absolute > samplePeak.value) Object.assign(samplePeak, { value: absolute, channel: ch, index: i });
+      if (value >= rail || value <= -1) {
+        total++;
+        mark[column] = 1;
+        if (runStart < 0) runStart = i;
+      } else if (runStart >= 0) {
+        // Keep the strongest few runs per channel for jump-to markers.
+        keepRun(runs, { index: runStart, length: i - runStart, channel: ch });
+        runStart = -1;
+      }
+    }
+    if (runStart >= 0) keepRun(runs, { index: runStart, length: frames - runStart, channel: ch });
+    clippedRuns.push(...runs);
+    rails.push(total);
+    markers.push(mark);
+    waveform.push({ lo, hi });
+    if (samplePeak.value > truePeak.value) Object.assign(truePeak, samplePeak);
+
+    // Skip entire blocks whose largest possible interpolated sample is below the current peak.
+    for (let b = 0; b < blocks.length; b++) {
+      const blockMax = Math.max(blocks[b - 1] || 0, blocks[b], blocks[b + 1] || 0);
+      if (blockMax * kernelNorm <= truePeak.value) continue;
+      const end = Math.min(frames, (b + 1) * blockSize);
+      for (let i = b * blockSize; i < end; i++) {
+        // A short lobe uses the largest coefficients. This tighter bound avoids most FIR work.
+        const localBound = Math.max(Math.abs(samples[i]), Math.abs(samples[i + 1] || 0),
+          Math.abs(samples[i - 1] || 0), Math.abs(samples[i + 2] || 0));
+        if (localBound * localNorm + blockMax * outerNorm <= truePeak.value) continue;
+        const interior = i >= 15 && i + 16 < frames;
+        for (let phase = 0; phase < kernel.length; phase++) {
+          const weights = kernel[phase];
+          let value = 0;
+          for (let tap = 0; tap < weights.length; tap++) {
+            const offset = i + tap - 15;
+            value += weights[tap] * (interior ? samples[offset] : (samples[offset] || 0));
+          }
+          const absolute = Math.abs(value);
+          if (absolute > truePeak.value) Object.assign(truePeak,
+            { value: absolute, channel: ch, index: i + (phase + 1) / 4 });
+        }
+      }
+    }
+  }
+  clippedRuns.sort((a, b) => b.length - a.length || a.index - b.index);
+  return { samplePeak, truePeak, rails, markers, waveform, clippedRuns };
+}
+
+function keepRun(runs, run) {
+  if (runs.length < 10) {
+    runs.push(run);
+    return;
+  }
+  let weakest = 0;
+  for (let i = 1; i < runs.length; i++) if (runs[i].length < runs[weakest].length) weakest = i;
+  if (run.length > runs[weakest].length) runs[weakest] = run;
+}
+
+function fft(real, imag) {
+  const n = real.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) [real[i], real[j]] = [real[j], real[i]];
+  }
+  for (let size = 2; size <= n; size *= 2) {
+    const half = size / 2;
+    const angle = -2 * Math.PI / size;
+    const stepR = Math.cos(angle);
+    const stepI = Math.sin(angle);
+    for (let start = 0; start < n; start += size) {
+      let wr = 1, wi = 0;
+      for (let j = start; j < start + half; j++) {
+        const k = j + half;
+        const re = wr * real[k] - wi * imag[k];
+        const im = wr * imag[k] + wi * real[k];
+        real[k] = real[j] - re;
+        imag[k] = imag[j] - im;
+        real[j] += re;
+        imag[j] += im;
+        const oldR = wr;
+        wr = oldR * stepR - wi * stepI;
+        wi = oldR * stepI + wi * stepR;
+      }
+    }
+  }
+}
+
+function measureSpectrum(channels, rate) {
+  const frames = channels[0].length;
+  const n = 32768;
+  const width = Math.min(n, frames);
+  const windows = Math.min(128, Math.max(1, Math.ceil((frames - width) / (width / 2)) + 1));
+  const resolution = rate / n;
+  const window = Float64Array.from({ length: width },
+    (_, i) => width <= 2 ? 1 : .5 - .5 * Math.cos(2 * Math.PI * i / width));
+  const windowPower = window.reduce((sum, v) => sum + v * v, 0);
+  const real = new Float64Array(n);
+  const imag = new Float64Array(n);
+  const spectra = channels.map((samples) => {
+    const power = new Float32Array(n / 2 + 1);
+    for (let w = 0; w < windows; w++) {
+      const start = windows === 1 ? 0 : Math.round(w * (frames - width) / (windows - 1));
+      real.fill(0);
+      imag.fill(0);
+      for (let b = 0; b < width; b++) real[b] = samples[start + b] * window[b];
+      fft(real, imag);
+      for (let b = 0; b < power.length; b++) {
+        const weight = b === 0 || b === n / 2 ? 1 : 2;
+        power[b] += weight * (real[b] ** 2 + imag[b] ** 2) / (rate * windowPower * windows);
+      }
+    }
+    return power;
+  });
+  const bass = spectra.map((power) => {
+    let sum = 0;
+    for (let b = 1; b < power.length && b * resolution < 50; b++) {
+      if (b * resolution >= 20) sum += power[b] * resolution;
+    }
+    return sum;
+  });
+  return { spectra, resolution, bass };
+}
+
+function measure(channels, rate, resolution = 24) {
+  const rail = resolution ? 1 - 2 ** (1 - resolution) : 1;
+  return { ...measurePeaks(channels, rail), ...measureSpectrum(channels, rate) };
+}
+
+function coefficients(type, frequency, rate, q, decibels = 0) {
+  const omega = 2 * Math.PI * Math.min(frequency, rate * .475) / rate;
+  const cos = Math.cos(omega);
+  const sin = Math.sin(omega);
+  const alpha = sin / (2 * q);
+  if (type === 'high') return normalize([(1 + cos) / 2, -(1 + cos), (1 + cos) / 2], [1 + alpha, -2 * cos, 1 - alpha]);
+  if (type === 'notch') return normalize([1, -2 * cos, 1], [1 + alpha, -2 * cos, 1 - alpha]);
+  const a = 10 ** (decibels / 40);
+  const slope = Math.sqrt(2 * a) * sin;
+  return normalize([
+    a * ((a + 1) - (a - 1) * cos + slope),
+    2 * a * ((a - 1) - (a + 1) * cos),
+    a * ((a + 1) - (a - 1) * cos - slope),
+  ], [
+    (a + 1) + (a - 1) * cos + slope,
+    -2 * ((a - 1) + (a + 1) * cos),
+    (a + 1) + (a - 1) * cos - slope,
+  ]);
+}
+
+function normalize(b, a) {
+  return [b[0] / a[0], b[1] / a[0], b[2] / a[0], a[1] / a[0], a[2] / a[0]];
+}
+
+function filter(samples, [b0, b1, b2, a1, a2]) {
+  let s1 = 0, s2 = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const value = samples[i];
+    const output = value * b0 + s1;
+    s1 = value * b1 - output * a1 + s2;
+    s2 = value * b2 - output * a2;
+    samples[i] = output;
+  }
+}
+
+function repair(samples, rail) {
+  let repaired = 0;
+  const clipped = (v) => v >= rail || v <= -1;
+  for (let i = 0; i < samples.length;) {
+    if (!clipped(samples[i])) {
+      i++;
+      continue;
+    }
+    const start = i;
+    while (i < samples.length && clipped(samples[i])) i++;
+    const length = i - start;
+    if (length > 8 || start < 2 || i + 1 >= samples.length) continue;
+    const left = samples[start - 1], right = samples[i];
+    const span = length + 1;
+    const m0 = Math.max(-1, Math.min(1, left - samples[start - 2])) * span;
+    const m1 = Math.max(-1, Math.min(1, samples[i + 1] - right)) * span;
+    if (Math.sign(samples[start]) !== Math.sign(samples[i - 1])) continue;
+    for (let j = 1; j <= length; j++) {
+      const t = j / span, tt = t * t, ttt = tt * t;
+      const estimated = (2 * ttt - 3 * tt + 1) * left + (ttt - 2 * tt + t) * m0 +
+        (-2 * ttt + 3 * tt) * right + (ttt - tt) * m1;
+      const sign = Math.sign(samples[start + j - 1]);
+      samples[start + j - 1] = sign * Math.min(1.35, Math.max(.98, sign * estimated));
+      repaired++;
+    }
+  }
+  return repaired;
+}
+
+function process(cfg) {
+  const { channels, rate, resolution } = source;
+  const chain = [];
+  if (cfg.high) {
+    const order = cfg.slope === 24 ? [.5411961001, 1.3065629649] : [Math.SQRT1_2];
+    for (const q of order) chain.push(coefficients('high', cfg.highHz, rate, q));
+  }
+  if (cfg.shelf && cfg.shelfDb) chain.push(coefficients('shelf', cfg.shelfHz, rate, Math.SQRT1_2, cfg.shelfDb));
+  if (cfg.notch) {
+    const count = cfg.harmonics ? 4 : 1;
+    for (let k = 1; k <= count; k++) {
+      if (k * cfg.notchHz < .475 * rate) chain.push(coefficients('notch', k * cfg.notchHz, rate, cfg.notchQ));
+    }
+  }
+  const rail = resolution ? 1 - 2 ** (1 - resolution) : 1;
+  const out = channels.map((samples) => samples.slice());
+  let repaired = 0;
+  for (const samples of out) {
+    if (cfg.repair && resolution) repaired += repair(samples, rail);
+    for (const section of chain) filter(samples, section);
+    const multiplier = gain(cfg.gain);
+    if (multiplier !== 1) for (let i = 0; i < samples.length; i++) samples[i] *= multiplier;
+  }
+
+  let attenuation = 0;
+  if (cfg.guard) {
+    const { truePeak } = measurePeaks(out, 1);
+    attenuation = Math.min(0, cfg.ceiling - db(truePeak.value));
+    if (attenuation < 0) {
+      const scale = gain(attenuation);
+      for (const samples of out) for (let i = 0; i < samples.length; i++) samples[i] *= scale;
+    }
+  }
+  return { channels: out, repaired, attenuation, metrics: measure(out, rate) };
+}
+
+function encodeWav(channels) {
+  const { rate, mask } = source;
+  const count = channels.length;
+  const extensible = count > 2 || mask !== 0;
+  const fmtSize = extensible ? 40 : 16;
+  const align = count * 3;
+  const frames = channels[0].length;
+  const size = frames * align;
+  const padding = size & 1;
+  const bext = source.bext ? new Uint8Array(source.bext.slice(0)) : null;
+  const bextLength = bext ? 8 + bext.length + (bext.length & 1) : 0;
+  const headSize = 12 + 8 + fmtSize + bextLength + 8;
+  if (headSize + size + padding - 8 > 0xffffffff) throw new Error('This export exceeds the 4 GB WAV container limit.');
+  const header = new DataView(new ArrayBuffer(headSize));
+  const tag = (pos, value) => {
+    for (let i = 0; i < 4; i++) header.setUint8(pos + i, value.charCodeAt(i));
+  };
+  tag(0, 'RIFF');
+  header.setUint32(4, headSize + size + padding - 8, true);
+  tag(8, 'WAVE');
+  tag(12, 'fmt ');
+  header.setUint32(16, fmtSize, true);
+  header.setUint16(20, extensible ? 0xfffe : 1, true);
+  header.setUint16(22, count, true);
+  header.setUint32(24, rate, true);
+  header.setUint32(28, rate * align, true);
+  header.setUint16(32, align, true);
+  header.setUint16(34, 24, true);
+  if (extensible) {
+    header.setUint16(36, 22, true);
+    header.setUint16(38, 24, true);
+    header.setUint32(40, mask, true);
+    new Uint8Array(header.buffer, 44, 16).set([1, 0, 0, 0, 0, 0, 16, 0, 128, 0, 0, 170, 0, 56, 155, 113]);
+  }
+  if (bext) {
+    const pos = 20 + fmtSize;
+    const info = new DataView(bext.buffer);
+    // Existing BWF loudness fields refer to the original signal.
+    if (bext.length >= 422 && info.getUint16(346, true) >= 2) {
+      for (let i = 412; i < 422; i += 2) info.setInt16(i, 0x7fff, true);
+    }
+    tag(pos, 'bext');
+    header.setUint32(pos + 4, bext.length, true);
+    new Uint8Array(header.buffer, pos + 8, bext.length).set(bext);
+  }
+  tag(headSize - 8, 'data');
+  header.setUint32(headSize - 4, size, true);
+
+  const chunks = [header.buffer];
+  const step = 16384;
+  for (let start = 0; start < frames; start += step) {
+    const end = Math.min(frames, start + step);
+    const chunk = new Uint8Array((end - start) * align);
+    let pos = 0;
+    for (let i = start; i < end; i++) {
+      for (const samples of channels) {
+        const value = Math.min(8388607, Math.max(-8388608, Math.round(samples[i] * 8388608)));
+        chunk[pos++] = value;
+        chunk[pos++] = value >> 8;
+        chunk[pos++] = value >> 16;
+      }
+    }
+    chunks.push(chunk);
+  }
+  if (padding) chunks.push(new Uint8Array(1));
+  return new Blob(chunks, { type: 'audio/wav' });
+}
+
+function loaded(id) {
+  const { channels, rate, resolution, floating, bits, bext } = source;
+  const metrics = measure(channels, rate, resolution);
+  postMessage({ kind: 'loaded', id, channels, rate, resolution, floating, bits, bext: !!bext, metrics });
+}
+
+self.onmessage = async ({ data: message }) => {
+  const { id } = message;
+  try {
+    if (message.kind === 'open') {
+      source = readWav(await message.file.arrayBuffer());
+      if (source) loaded(id);
+      else postMessage({ kind: 'fallback', id });
+    }
+    if (message.kind === 'decoded') {
+      source = { channels: message.channels, rate: message.rate, resolution: null };
+      loaded(id);
+    }
+    if (message.kind === 'render') {
+      const result = process(message.cfg);
+      postMessage({ kind: 'rendered', id, ...result }, result.channels.map((channel) => channel.buffer));
+    }
+    if (message.kind === 'encode') postMessage({ kind: 'encoded', id, blob: encodeWav(message.channels) });
+  } catch (error) {
+    postMessage({ kind: 'error', id, stage: message.kind, error: error.message });
+  }
+};
+</script>
+<script>
+'use strict';
+
+const byId = (id) => document.getElementById(id);
+const ui = Object.fromEntries([
+  'open', 'choose', 'file', 'drop', 'filename', 'fileinfo', 'original', 'processed', 'play', 'stop',
+  'seek', 'clock', 'monitor', 'wave', 'spectrum', 'wave-empty', 'spectrum-empty', 'channel',
+  'processed-key', 'cues', 'peak-before', 'peak-after', 'clip-before', 'clip-after', 'bass-before',
+  'bass-after', 'controls', 'preset', 'preset-help', 'render', 'download', 'status', 'render-state', 'play-glyph',
+].map((id) => [id, byId(id)]));
+const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+const OfflineAudioContextClass = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+const formatter = new Intl.NumberFormat();
+const toGain = (dB) => 10 ** (dB / 20);
+const toDb = (value) => 20 * Math.log10(Math.max(value, 1e-15));
+const powerDb = (value) => 10 * Math.log10(Math.max(value, 1e-30));
+const colors = { graph: '#101d30', axis: '#a9b9cd', grid: '#2a3b52', original: '#ffb480', processed: '#68e1cd', mark: '#d4a4fa', play: '#fbfbff' };
+const neutral = {
+  high: false, highHz: 40, slope: 24, shelf: false, shelfHz: 60, shelfDb: -6,
+  notch: false, notchHz: 60, notchQ: 30, harmonics: false, repair: false, gain: 0, guard: false, ceiling: -1,
+};
+const presets = {
+  neutral: { settings: neutral, help: 'Start from a preset or adjust the filters below.' },
+  pa: { settings: { ...neutral, high: true, gain: -2, guard: true }, help: '40 Hz high-pass at 24 dB/oct, with 2 dB of trim. For deep bass buildup.' },
+  hum50: { settings: { ...neutral, notch: true, notchHz: 50, harmonics: true, guard: true }, help: 'Notches at 50, 100, 150 and 200 Hz.' },
+  hum60: { settings: { ...neutral, notch: true, harmonics: true, guard: true }, help: 'Notches at 60, 120, 180 and 240 Hz.' },
+  peaks: { settings: { ...neutral, repair: true, guard: true }, help: 'Rebuilds short full-scale peaks and turns the file down if needed.' },
+};
+
+const player = { ctx: null, monitor: null, node: null, offset: 0, started: 0, animation: 0 };
+const app = { worker: null, id: 0, file: null, rate: 0, duration: 0, resolution: null, original: null, result: null, mode: 'original', phase: 'idle', dirty: true };
+const playhead = document.createElement('span');
+playhead.setAttribute('aria-hidden', 'true');
+playhead.style.cssText = 'position:absolute;top:0;bottom:23px;width:1px;background:#fbfbff;pointer-events:none;';
+playhead.hidden = true;
+ui.wave.after(playhead);
+
+function status(text, kind = '') {
+  ui.status.textContent = text;
+  ui.status.dataset.kind = kind;
+}
+
+function level(value, suffix, digits = 1) {
+  if (!Number.isFinite(value) || value <= -299) return '−∞ ' + suffix;
+  return (value > 0 && suffix === 'dBTP' ? '+' : '') + value.toFixed(digits).replace('-', '−') + ' ' + suffix;
+}
+
+function time(seconds, precision = 3) {
+  const factor = 10 ** precision;
+  const ticks = Math.floor(Math.max(0, seconds) * factor + 1e-7);
+  const whole = Math.floor(ticks / factor);
+  const mins = Math.floor(whole / 60);
+  return mins + ':' + String(whole % 60).padStart(2, '0') +
+    (precision ? '.' + String(ticks % factor).padStart(precision, '0') : '');
+}
+
+function channelName(index, count) {
+  if (count === 1) return 'Mono';
+  if (count === 2) return index === 0 ? 'Left' : 'Right';
+  return 'Ch ' + (index + 1);
+}
+
+function measureCells(suffix, metrics) {
+  const peakCell = ui['peak-' + suffix];
+  const clips = ui['clip-' + suffix];
+  const bass = ui['bass-' + suffix];
+  for (const cell of [peakCell, clips, bass]) {
+    cell.textContent = '—';
+    cell.classList.remove('flag');
+    cell.removeAttribute('title');
+  }
+  if (!metrics) return;
+  const peak = metrics.truePeak;
+  peakCell.textContent = level(toDb(peak.value), 'dBTP', 2);
+  peakCell.title = channelName(peak.channel, metrics.rails.length) + ' at ' + time(peak.index / app.rate);
+  peakCell.classList.toggle('flag', peak.value > 1);
+  const total = metrics.rails.reduce((sum, count) => sum + count, 0);
+  clips.textContent = formatter.format(total);
+  clips.title = metrics.rails.map((count, i) => channelName(i, metrics.rails.length) + ' ' + formatter.format(count)).join(', ');
+  clips.classList.toggle('flag', total > 0);
+  bass.textContent = level(powerDb(metrics.bass.reduce((sum, value) => sum + value, 0) / metrics.bass.length), 'dBFS');
+  bass.title = metrics.bass.map((value, i) => channelName(i, metrics.bass.length) + ' ' + level(powerDb(value), 'dBFS')).join(', ');
+}
+
+function cues() {
+  ui.cues.replaceChildren();
+  const metrics = app.original?.metrics;
+  if (!metrics) {
+    ui.cues.hidden = true;
+    return;
+  }
+  const list = [];
+  if (metrics.truePeak.value > 1) list.push({ ...metrics.truePeak, label: 'Peak' });
+  for (const run of metrics.clippedRuns) {
+    if (!list.some((item) => Math.abs(item.index - run.index) / app.rate < .12)) list.push({ ...run, label: 'Clip' });
+    if (list.length >= 5) break;
+  }
+  for (const item of list) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = item.label + ' ' + time(item.index / app.rate);
+    button.title = channelName(item.channel, metrics.rails.length) + (item.length ? ' · ' + item.length + ' consecutive full-scale samples' : ' · highest estimated true peak');
+    button.addEventListener('click', () => seek(item.index / app.rate));
+    ui.cues.append(button);
+  }
+  ui.cues.hidden = !list.length;
+}
+
+function canvasContext(canvas) {
+  const box = canvas.getBoundingClientRect();
+  const scale = window.devicePixelRatio || 1;
+  const width = Math.max(1, box.width);
+  const height = Math.max(1, box.height);
+  const pw = Math.round(width * scale), ph = Math.round(height * scale);
+  if (canvas.width !== pw || canvas.height !== ph) { canvas.width = pw; canvas.height = ph; }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.fillStyle = colors.graph;
+  ctx.fillRect(0, 0, width, height);
+  ctx.font = '11px ui-monospace, monospace';
+  ctx.lineWidth = 1;
+  return { ctx, width, height };
+}
+
+function line(ctx, x0, y0, x1, y1) {
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x1, y1);
+  ctx.stroke();
+}
+
+function waveBounds(width) {
+  return { left: 37, right: width - 14 };
+}
+
+function drawWave() {
+  const { ctx, width, height } = canvasContext(ui.wave);
+  const metrics = (app.mode === 'processed' ? app.result : app.original)?.metrics;
+  if (!metrics) return;
+  const { left, right } = waveBounds(width);
+  const bottom = height - 23;
+  const laneHeight = (bottom - 7) / metrics.waveform.length;
+  const range = Math.max(1, metrics.samplePeak.value);
+  const div = width < 470 ? 4 : 8;
+  ctx.strokeStyle = colors.grid;
+  ctx.fillStyle = colors.axis;
+  for (let i = 0; i <= div; i++) {
+    const x = left + (right - left) * i / div;
+    line(ctx, x, 4, x, bottom);
+    ctx.textAlign = i === div ? 'right' : i === 0 ? 'left' : 'center';
+    ctx.fillText(time(app.duration * i / div, 0), x, height - 7);
+  }
+  for (const [ch, { lo, hi }] of metrics.waveform.entries()) {
+    const center = 5 + (ch + .5) * laneHeight;
+    const amplitude = Math.max(1, laneHeight * .43) / range;
+    ctx.strokeStyle = colors.grid;
+    line(ctx, left, center, right, center);
+    ctx.fillStyle = colors.axis;
+    ctx.textAlign = 'right';
+    const name = metrics.waveform.length === 2 ? ['L', 'R'][ch] : metrics.waveform.length === 1 ? 'M' : String(ch + 1);
+    if (laneHeight >= 10) ctx.fillText(name, left - 8, center + 4);
+    ctx.strokeStyle = colors[app.mode];
+    ctx.globalAlpha = .9;
+    ctx.beginPath();
+    for (let i = 0; i < lo.length; i++) {
+      const x = left + (right - left) * (i + .5) / lo.length;
+      ctx.moveTo(x, center - hi[i] * amplitude);
+      ctx.lineTo(x, center - lo[i] * amplitude + .6);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = colors.mark;
+    for (let i = 0; i < hi.length; i++) {
+      if (!metrics.markers[ch][i]) continue;
+      const x = left + (right - left) * (i + .5) / lo.length;
+      ctx.fillRect(x, center - laneHeight * .46, 1.5, Math.min(4, laneHeight / 5));
+    }
+  }
+  updatePlayhead();
+}
+
+function drawSpectrum() {
+  const { ctx, width, height } = canvasContext(ui.spectrum);
+  const original = app.original?.metrics;
+  if (!original) return;
+  const processed = app.dirty ? null : app.result?.metrics;
+  const left = width < 370 ? 47 : 55, right = width - 14, top = 12, bottom = height - 26;
+  const lo = 15, hi = Math.min(20000, app.rate / 2);
+  const x = (f) => left + (right - left) * Math.log(f / lo) / Math.log(hi / lo);
+  const y = (dB) => bottom - (bottom - top) * (dB + 130) / 120;
+  ctx.fillStyle = '#4b365b';
+  ctx.fillRect(x(20), top, x(50) - x(20), bottom - top);
+  ctx.strokeStyle = colors.grid;
+  ctx.fillStyle = colors.axis;
+  ctx.textAlign = 'right';
+  for (const value of [-130, -110, -90, -70, -50, -30, -10]) {
+    line(ctx, left, y(value), right, y(value));
+    ctx.fillText(String(value), left - 6, y(value) + 3);
+  }
+  const ticks = width > 600 ? [20, 30, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000] :
+    width > 380 ? [20, 50, 100, 200, 1000, 5000, 20000] : [20, 50, 200, 1000, 5000, 20000];
+  for (const freq of ticks) {
+    if (freq > hi) continue;
+    line(ctx, x(freq), top, x(freq), bottom);
+    ctx.textAlign = freq === 20 ? 'left' : freq === 20000 ? 'right' : 'center';
+    ctx.fillText(freq >= 1000 ? (freq / 1000) + 'k' : String(freq), x(freq), bottom + 14);
+  }
+  ctx.textAlign = 'left';
+  ctx.fillText('dBFS/Hz', 6, bottom + 14);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(left, top, right - left, bottom - top);
+  ctx.clip();
+  const selection = ui.channel.value;
+  for (const [key, metrics] of [['original', original], ['processed', processed]]) {
+    if (!metrics) continue;
+    const spectra = selection === 'mix' ? metrics.spectra : [metrics.spectra[Number(selection)]];
+    const power = (bin) => spectra.reduce((sum, ch) => sum + ch[bin], 0) / spectra.length;
+    const minBin = Math.ceil(lo / metrics.resolution), maxBin = Math.floor(hi / metrics.resolution);
+    ctx.strokeStyle = colors[key];
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    let started = false;
+    for (let px = 0; px <= right - left; px++) {
+      const freq = lo * (hi / lo) ** (px / (right - left));
+      const next = lo * (hi / lo) ** ((px + 1) / (right - left));
+      const floor = Math.max(minBin, Math.floor(freq / metrics.resolution));
+      const upper = Math.min(maxBin, Math.max(floor + 1, Math.floor(next / metrics.resolution)));
+      if (upper < floor) break;
+      let p = 0;
+      if (upper === floor + 1) {
+        const portion = Math.max(0, Math.min(1, freq / metrics.resolution - floor));
+        p = power(floor) * (1 - portion) + power(upper) * portion;
+      } else {
+        for (let bin = floor; bin <= upper; bin++) p += power(bin);
+        p /= upper - floor + 1;
+      }
+      const yp = y(Math.max(-133, powerDb(p)));
+      if (started) ctx.lineTo(left + px, yp);
+      else { ctx.moveTo(left + px, yp); started = true; }
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function readSettings() {
+  return Object.fromEntries(Object.entries(neutral).map(([key, fallback]) => {
+    const input = byId(key);
+    if (typeof fallback === 'boolean') return [key, input.checked];
+    const raw = input.value === '' ? fallback : Number(input.value);
+    const v = Number.isFinite(raw) ? raw : fallback;
+    return [key, input.type === 'number' ? Math.max(Number(input.min), Math.min(Number(input.max), v)) : v];
+  }));
+}
+
+function setSettings(settings) {
+  for (const [key, value] of Object.entries(settings)) {
+    const input = byId(key);
+    if (input.type === 'checkbox') input.checked = value;
+    else input.value = value;
+  }
+}
+
+function readPosition() {
+  return player.node ? Math.min(app.duration, player.offset + player.ctx.currentTime - player.started) : player.offset;
+}
+
+function updatePlayhead() {
+  const position = readPosition();
+  ui.clock.textContent = time(position);
+  ui.seek.value = position;
+  if (!app.original) return;
+  const box = ui.wave.getBoundingClientRect();
+  const { left, right } = waveBounds(box.width);
+  playhead.hidden = false;
+  playhead.style.left = (left + (right - left) * position / app.duration) + 'px';
+}
+
+function syncControls() {
+  const ready = !!app.original;
+  const canCompare = ready && !app.dirty && !!app.result;
+  ui.controls.disabled = !ready || app.phase === 'rendering' || app.phase === 'exporting';
+  ui.original.disabled = !ready;
+  ui.processed.disabled = !canCompare;
+  ui.play.disabled = !ready;
+  ui.stop.disabled = !ready;
+  ui.seek.disabled = !ready;
+  ui.channel.disabled = !ready;
+  ui.render.disabled = !ready || app.phase === 'rendering' || app.phase === 'exporting';
+  ui.download.disabled = !canCompare || app.phase !== 'ready' || app.result?.metrics.samplePeak.value > 1;
+  ui.original.setAttribute('aria-pressed', String(app.mode === 'original'));
+  ui.processed.setAttribute('aria-pressed', String(app.mode === 'processed'));
+  const button = !!player.node;
+  ui.play.setAttribute('aria-label', button ? 'Pause' : 'Play');
+  ui['play-glyph'].setAttribute('d', button ? 'M9 5v14M15 5v14' : 'M8 5l12 7-12 7z');
+}
+
+function pause(reset = false) {
+  const node = player.node;
+  player.offset = reset ? 0 : readPosition();
+  player.node = null;
+  if (node) {
+    node.onended = null;
+    try { node.stop(); } catch {}
+    node.disconnect();
+  }
+  cancelAnimationFrame(player.animation);
+  updatePlayhead();
+  syncControls();
+}
+
+function currentAudio() {
+  return app.mode === 'processed' ? app.result : app.original;
+}
+
+function audioBuffer(recording) {
+  if (recording.buffer) return recording.buffer;
+  const channels = recording.channels;
+  const buffer = player.ctx.createBuffer(channels.length, channels[0].length, app.rate);
+  channels.forEach((channel, i) => buffer.copyToChannel(channel, i));
+  recording.buffer = buffer;
+  recording.channels = null;
+  return buffer;
+}
+
+async function play() {
+  if (!app.original || player.node) return;
+  try {
+    if (!AudioContextClass) throw new Error('This browser does not provide Web Audio.');
+    if (!player.ctx) {
+      player.ctx = new AudioContextClass();
+      player.monitor = player.ctx.createGain();
+      player.monitor.gain.value = toGain(Number(ui.monitor.value));
+      player.monitor.connect(player.ctx.destination);
+    }
+    const id = app.id;
+    await player.ctx.resume();
+    if (id !== app.id || player.node) return;
+    if (player.offset >= app.duration) player.offset = 0;
+    const node = player.ctx.createBufferSource();
+    node.buffer = audioBuffer(currentAudio());
+    node.connect(player.monitor);
+    player.node = node;
+    player.started = player.ctx.currentTime;
+    node.onended = () => {
+      if (player.node !== node) return;
+      pause(true);
+    };
+    node.start(0, player.offset);
+    const animate = () => {
+      updatePlayhead();
+      if (player.node) player.animation = requestAnimationFrame(animate);
+    };
+    animate();
+    syncControls();
+  } catch (error) {
+    pause();
+    status(error.message || 'Audio playback could not start.', 'error');
+  }
+}
+
+function seek(seconds) {
+  if (!app.original) return;
+  const playing = !!player.node;
+  pause();
+  player.offset = Math.min(app.duration, Math.max(0, seconds));
+  updatePlayhead();
+  if (playing && player.offset < app.duration) void play();
+}
+
+function setMode(mode) {
+  if (mode === app.mode || (mode === 'processed' && (app.dirty || !app.result))) return;
+  const playing = !!player.node;
+  pause();
+  app.mode = mode;
+  drawWave();
+  syncControls();
+  if (playing) void play();
+}
+
+function dirty() {
+  if (!app.original) return;
+  if (app.mode === 'processed') setMode('original');
+  app.dirty = true;
+  app.result = null;
+  measureCells('after', null);
+  ui['processed-key'].hidden = true;
+  ui['render-state'].textContent = '';
+  ui['render-state'].dataset.state = '';
+  status('Render to hear these settings.');
+  drawSpectrum();
+  syncControls();
+}
+
+function restoreEmpty() {
+  ui.drop.classList.remove('ready');
+  ui['wave-empty'].hidden = false;
+  ui['spectrum-empty'].hidden = false;
+  playhead.hidden = true;
+  ui['render-state'].textContent = '';
+  ui['render-state'].dataset.state = '';
+  ui['processed-key'].hidden = true;
+  ui.channel.replaceChildren(new Option('Channel average', 'mix'));
+  measureCells('before', null);
+  measureCells('after', null);
+  cues();
+  drawWave();
+  drawSpectrum();
+}
+
+async function fallbackDecode(worker, id) {
+  if (!OfflineAudioContextClass) throw new Error('This audio format requires a browser with Web Audio decoding.');
+  status('Decoding with the browser…');
+  const offline = new OfflineAudioContextClass(1, 1, 48000);
+  const bytes = await app.file.arrayBuffer();
+  const decoded = await offline.decodeAudioData(bytes);
+  if (id !== app.id || worker !== app.worker) return;
+  const channels = Array.from({ length: decoded.numberOfChannels }, (_, index) => decoded.getChannelData(index).slice());
+  worker.postMessage({ kind: 'decoded', id, channels, rate: decoded.sampleRate }, channels.map((c) => c.buffer));
+}
+
+function useOriginal(message) {
+  const count = message.channels.length;
+  app.rate = message.rate;
+  app.duration = message.channels[0].length / message.rate;
+  app.resolution = message.resolution;
+  app.original = { channels: message.channels, buffer: null, metrics: message.metrics };
+  app.phase = 'ready';
+  ui.drop.classList.add('ready');
+  const layout = count === 1 ? 'Mono' : count === 2 ? 'Stereo' : count + ' channels';
+  const encoding = message.bits ? message.bits + '-bit ' + (message.floating ? 'float' : 'PCM') : 'Browser decoded at 48 kHz';
+  ui.fileinfo.textContent = [time(app.duration), layout, (app.rate / 1000) + ' kHz', encoding].filter((s, i) => message.bits || i !== 2).join(' · ');
+  ui.seek.max = app.duration;
+  for (let index = 0; index < count; index++) ui.channel.add(new Option(channelName(index, count), String(index)));
+  ui['wave-empty'].hidden = true;
+  ui['spectrum-empty'].hidden = true;
+  measureCells('before', message.metrics);
+  cues();
+  status('Scanned. Choose cleanup settings and render a preview.');
+  drawWave();
+  drawSpectrum();
+  syncControls();
+}
+
+function useResult(message) {
+  app.result = { channels: message.channels, buffer: null, metrics: message.metrics };
+  app.phase = 'ready';
+  app.dirty = false;
+  measureCells('after', message.metrics);
+  ui['processed-key'].hidden = false;
+  ui['render-state'].textContent = 'Preview ready';
+  ui['render-state'].dataset.state = 'ready';
+  const notes = [];
+  if (byId('repair').checked) {
+    notes.push(app.resolution ? formatter.format(message.repaired) + ' samples estimated' : 'Peak repair is available for integer PCM WAV');
+  }
+  if (message.attenuation < -.005) notes.push('Peak guard ' + message.attenuation.toFixed(2).replace('-', '−') + ' dB');
+  if (message.metrics.samplePeak.value > 1) {
+    status('Output exceeds full scale. Enable Peak guard or reduce trim, then render again.', 'error');
+  } else {
+    status(notes.length ? notes.join(' · ') + '.' : 'Preview ready for playback and export.');
+  }
+  setMode('processed');
+  syncControls();
+  drawSpectrum();
+}
+
+function saveBlob(blob) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = app.file.name.replace(/\.[^.]+$/, '') + ' - cleaned.wav';
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
+function failure(error, stage) {
+  if (stage === 'open' || stage === 'decoded') {
+    app.phase = 'idle';
+    ui.fileinfo.textContent = 'Choose a readable audio file, or convert the source to PCM WAV.';
+  } else {
+    app.phase = 'ready';
+    ui['render-state'].textContent = app.dirty ? '' : 'Preview ready';
+  }
+  status(error || 'The operation could not finish.', 'error');
+  syncControls();
+}
+
+function loadFile(file) {
+  if (!file) return;
+  pause(true);
+  app.worker?.terminate();
+  const id = ++app.id;
+  Object.assign(app, { worker: null, file, original: null, result: null, mode: 'original', phase: 'loading', dirty: true });
+  ui.filename.textContent = file.name;
+  ui.fileinfo.textContent = 'Reading audio and scanning for peaks…';
+  restoreEmpty();
+  syncControls();
+  status('Analysing ' + file.name + '…');
+  const url = URL.createObjectURL(new Blob([byId('audio-engine').textContent], { type: 'text/javascript' }));
+  let worker;
+  try {
+    worker = new Worker(url);
+    app.worker = worker;
+  } catch (error) {
+    failure(error.message, 'open');
+    return;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+  worker.addEventListener('error', (event) => {
+    if (id !== app.id) return;
+    failure(event.message || 'The audio worker could not start.', app.phase === 'loading' ? 'open' : app.phase);
+  });
+  worker.onmessage = async ({ data: message }) => {
+    if (id !== app.id || message.id !== id) return;
+    if (message.kind === 'fallback') {
+      try { await fallbackDecode(worker, id); }
+      catch (error) { if (id === app.id) failure(error.message || 'This browser could not decode the file.', 'decoded'); }
+    } else if (message.kind === 'loaded') useOriginal(message);
+    else if (message.kind === 'rendered') useResult(message);
+    else if (message.kind === 'encoded') {
+      app.phase = 'ready';
+      saveBlob(message.blob);
+      status('WAV exported.');
+      syncControls();
+    } else if (message.kind === 'error') failure(message.error, message.stage);
+  };
+  worker.postMessage({ kind: 'open', id, file });
+}
+
+ui.open.addEventListener('click', () => ui.file.click());
+ui.choose.addEventListener('click', () => ui.file.click());
+ui.file.addEventListener('change', () => {
+  const file = ui.file.files[0];
+  ui.file.value = '';
+  loadFile(file);
+});
+for (const event of ['dragover', 'drop']) {
+  window.addEventListener(event, (e) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    if (event === 'drop') {
+      ui.drop.classList.remove('drag');
+      loadFile(e.dataTransfer.files[0]);
+    } else {
+      e.dataTransfer.dropEffect = 'copy';
+      ui.drop.classList.add('drag');
+    }
+  });
+}
+window.addEventListener('dragleave', (event) => {
+  if (!event.relatedTarget) ui.drop.classList.remove('drag');
+});
+ui.original.addEventListener('click', () => setMode('original'));
+ui.processed.addEventListener('click', () => setMode('processed'));
+ui.play.addEventListener('click', () => player.node ? pause() : void play());
+ui.stop.addEventListener('click', () => pause(true));
+ui.seek.addEventListener('input', () => seek(Number(ui.seek.value)));
+ui.monitor.addEventListener('change', () => {
+  if (player.monitor) player.monitor.gain.setTargetAtTime(toGain(Number(ui.monitor.value)), player.ctx.currentTime, .025);
+});
+ui.wave.addEventListener('pointerdown', (event) => {
+  if (!app.original || event.button !== 0) return;
+  const box = ui.wave.getBoundingClientRect();
+  const { left, right } = waveBounds(box.width);
+  seek((event.clientX - box.left - left) * app.duration / (right - left));
+});
+ui.channel.addEventListener('change', drawSpectrum);
+ui.preset.addEventListener('change', () => {
+  const preset = presets[ui.preset.value];
+  if (!preset) return;
+  setSettings(preset.settings);
+  ui['preset-help'].textContent = preset.help;
+  dirty();
+});
+for (const key of Object.keys(neutral)) {
+  const input = byId(key);
+  const eventName = input.type === 'number' ? 'input' : 'change';
+  input.addEventListener(eventName, () => {
+    ui.preset.value = 'custom';
+    ui['preset-help'].textContent = 'Custom settings';
+    dirty();
+  });
+  if (input.type === 'number') input.addEventListener('change', () => { input.value = readSettings()[key]; });
+}
+ui.render.addEventListener('click', () => {
+  if (!app.original || app.phase === 'rendering') return;
+  const cfg = readSettings();
+  setSettings(cfg);
+  app.phase = 'rendering';
+  ui['render-state'].textContent = 'Rendering…';
+  ui['render-state'].dataset.state = '';
+  status('Processing the full recording…');
+  syncControls();
+  app.worker.postMessage({ kind: 'render', id: app.id, cfg });
+});
+ui.download.addEventListener('click', () => {
+  if (ui.download.disabled) return;
+  const channels = app.result.channels ?? Array.from({ length: app.result.buffer.numberOfChannels },
+    (_, index) => app.result.buffer.getChannelData(index));
+  app.phase = 'exporting';
+  status('Writing the 24-bit WAV…');
+  syncControls();
+  app.worker.postMessage({ kind: 'encode', id: app.id, channels });
+});
+document.addEventListener('keydown', (event) => {
+  if (event.code !== 'Space' || event.repeat || !app.original || event.target.closest('button, input, select, textarea, a')) return;
+  event.preventDefault();
+  if (player.node) pause();
+  else void play();
+});
+const redraw = new ResizeObserver(() => {
+  drawWave();
+  drawSpectrum();
+});
+redraw.observe(ui.wave);
+redraw.observe(ui.spectrum);
+</script>
+</body>
+</html>
